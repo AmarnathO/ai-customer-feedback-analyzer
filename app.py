@@ -12,28 +12,54 @@ def load_model():
         device=-1
     )
 
+
+classifier = load_model()
+
 # ZeroGPU requires a decorated function
 @spaces.GPU(duration=60)
-def analyze_sentiment(review):
-    if not review.strip():
-        return "Please enter a customer review."
+def analyze_reviews(text):
 
-    classifier = load_model()
-    result = classifier(review, truncation=True)[0]
+    # Convert multiline text into a list of reviews
+    reviews = [
+        review.strip()
+        for review in text.split("\n")
+        if review.strip()
+    ]
 
-    label = result["label"]
-    score = result["score"]
+    if not reviews:
+        return []
 
-    return f"Sentiment: {label}\nScore: {score:.2%}"
+    # Run batch inference
+    results = classifier(
+        reviews,
+        batch_size=4,
+        truncation=True
+    )
 
+    # Prepare rows for Gradio
+    output = []
+
+    for review, result in zip(reviews, results):
+        output.append([
+            review,
+            result["label"],
+            round(result["score"], 3)
+        ])
+
+    return output
 demo = gr.Interface(
-    fn=analyze_sentiment,
+    fn=analyze_reviews,
     inputs=gr.Textbox(
-        label="Customer Review",
-        lines=3
+        label="Customer Reviews",
+        lines=6,
+        placeholder="Enter one review per line"
     ),
-    outputs=gr.Textbox(label="AI Prediction"),
-    title="AI Customer Feedback Analyzer"
+    outputs=gr.Dataframe(
+        headers=["Customer Review", "Sentiment", "Score"],
+        datatype=["str", "str", "number"]
+    ),
+    title="AI Customer Feedback Analyzer",
+    description="Analyze multiple customer reviews using Hugging Face."
 )
 
 demo.launch()
